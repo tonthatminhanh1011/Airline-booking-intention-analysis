@@ -1,0 +1,138 @@
+---
+title: "BSAN2204 A3 - Ton That Minh Anh - 2412580007"
+author: "Tôn Thất Minh Anh (Student ID: 2412580007)"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: show      # readers can hide/show code
+    theme: flatly
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    number_sections: true
+    df_print: paged
+    self_contained: true
+    smooth_scroll: true
+---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+#| echo: FALSE
+library(knitr)
+library(psych) #dùng để có lệnh describe
+library(modelsummary)
+library(performance)
+library(sjPlot)
+opts_chunk$set(echo= FALSE)
+opts_chunk$set(warning = FALSE)
+opts_chunk$set(message = FALSE)
+```
+
+```{r}
+# INSTRUCTION 1: DOWNLOAD THE FILE BSAN2204_A3_data.rdata FROM THE LMS
+load("BSAN2204_A3_data.rdata")
+```
+
+```{r}
+# INSTRUCTION 2: REPLACE THE VALUE IN set.seed()
+# WITH YOUR LAST 5 DIGITS OF ID
+set.seed(80007)
+data <- dataFTU[sample(nrow(dataFTU), 300), ]
+attach(data)
+```
+
+# . Introduction
+This report provides a concise data summary and predictive analysis to support the client’s request for insights into airline booking intentions. The dataset contains responses from 300 participants and includes a range of attitudinal measures recorded on 1–5 Likert scales, such as Perceived_Credibility, Perceived_Value, Perceived_Risk, and Perceived_Quality. These variables represent aggregated agreement with statements relating to the airline’s brand, service quality, trustworthiness, and perceived benefits. The dataset also includes demographic variables such as Age, Sex, Education, and Income.
+
+The outcome of interest, Booking_Intention, captures respondents’ stated likelihood of choosing to fly with the airline. Understanding the factors that influence this intention is critical for evaluating whether the client’s proposed marketing campaign—centred on credibility and brand messaging—is supported by the data.
+
+This report follows a structured approach: first presenting descriptive statistics to summarise customer attitudes and demographic characteristics, followed by visualisations to highlight notable patterns in the data. A series of regression models is then estimated to identify the strongest predictors of Booking_Intention. Finally, the report provides clear and actionable recommendations that translate analytical findings into practical guidance for the client’s upcoming campaign.
+
+# . Exploratory Data Analysis
+```{r}
+varlist <- c("Perceived_Credibility","Perceived_Risk","Income") #unknown at this time! (variable list, continuous variables)
+stats <- c("n", "mean", "sd", "skew","kurtosis") #(Khi describe thì chỉ hiện mấy cái trong ngoặc)
+
+describe(data[,varlist])[,stats] |>
+  round(3)|>
+  kable(caption="Desciptive statistics for continuous variables in the airline booking dataset")
+```
+The above descriptive statistics table shows the central tendency and variability of key continuous variables in the airline booking dataset. The average Perceived_Credibility of respondents is `r mean(na.omit(data$Perceived_Credibility)) |> round(3)` (on a 1–5 Likert scale), which suggests that customers generally hold moderately positive views of the airline’s trustworthiness and reputation. This implies that the airline benefits from a baseline level of consumer confidence, making credibility a potentially important factor to consider in the client’s upcoming marketing campaign.
+
+The average Perceived_Risk in the dataset is `r mean(na.omit(data$Perceived_Risk)) |> round(3)` (Likert scale), indicating that respondents perceive relatively low levels of risk when evaluating the airline. This low-risk perception reduces psychological barriers to booking and suggests that customers do not commonly associate the brand with safety concerns, operational issues, or uncertainty. Such findings reflect positively on the airline’s existing market position and highlight that risk reduction messaging may not be as critical as reinforcing credibility.
+
+In contrast, Income displays a much larger numeric range, with an average of `r mean(na.omit(data$Income)) |> round(3)` (currency units). This wide distribution highlights substantial diversity in the socio-economic backgrounds of respondents. Since income can influence travel frequency, price sensitivity, and preferences for different service levels, this variation is important context for understanding consumer behaviour. Higher-income customers may place greater emphasis on service quality or reliability, while lower-income customers may be more responsive to promotions or value-related messaging.
+
+Overall, the descriptive statistics reveal that the sample consists of respondents who generally view the airline favourably, perceive low risk, and vary widely in financial capacity. These initial insights provide an important foundation for assessing how attitudes and demographic factors shape Booking_Intention in the subsequent predictive analysis.
+
+# . Visualization
+```{r}
+par(mfrow = c(2,2)) #Split a window into 4 plots (2x2)
+hist(Perceived_Credibility, col="#A6CEE3", main="Distribution of Perceived Credibility") #continuous (hist=histogram); col để đặt màu; Main để đặt tên
+boxplot(Perceived_Risk, col="#B2DF8A", main="Distribution of Perceived Risk") #continuous
+ts_counts <- table(Education)
+barplot(ts_counts, col  = "pink", main = "Distribution of Education Levels", xlab = "Education", las = 1, cex.names = 0.4, ylab = "Count") #categorical
+table(Sex) |> barplot(cex.names = 1, las=1, col = "#FDBF6F", main = "Distribution of Respondents by Sex", xlab = "Sex", ylab = "Count") #categorical variable 
+#cex là cỡ, las = 2 cố đingj là vuông góc trục hoành
+```
+
+My main Variables of Interest are now plotted seperately:
+
+```{r}
+par(mfrow = c(1,1)) 
+hist(Booking_Intention,
+     breaks = 30,
+     col    = "lightblue",
+     main   = "Distribution of Booking Intention",
+     xlab   = "Booking Intention Score")
+```
+```{r}
+plot(Perceived_Credibility, Booking_Intention,
+     main = "Perceived Credibility vs. Booking Intention",
+     xlab = "Perceived Credibility",
+     ylab = "Booking Inttention")
+```
+```{r}
+boxplot(Booking_Intention ~ Sex,
+        data = data,
+        main = "Booking Intention by Sex",
+        xlab = "Sex",
+        ylab = "Booking Intention",
+        col  = "#CAB2D6")
+```
+
+# . Predictive Analysis
+## . Regression model specification
+
+To identify the key factors influencing customers’ likelihood to book with the airline, several linear regression models were estimated using Booking_Intention as the dependent variable. The main predictors selected were Perceived_Credibility, Perceived_Risk, and Perceived_Value, as these attitude variables capture trust, perceived uncertainty, and perceived benefits, which are central to the client’s marketing objectives. Because credibility may not have a purely linear effect, a squared term (I(Perceived_Credibility²)) was included in some models to allow for possible non-linear relationships.
+
+An interaction between Perceived_Credibility and Perceived_Risk was also tested to examine whether the impact of credibility depends on customers’ risk perceptions. The final model incorporates Income as a demographic control, acknowledging that financial capacity may influence booking decisions.
+
+The five models progress from simple additive structures to more complex specifications with non-linear and interaction terms, allowing comparison of model fit and identification of the most streamlined and informative model.
+
+## . Regression Model
+```{r echo=TRUE}
+m1 <- lm(Booking_Intention ~ Perceived_Credibility + Perceived_Risk + Perceived_Value)
+m2 <- lm(Booking_Intention ~ Perceived_Credibility + Perceived_Risk + I(Perceived_Credibility^2))
+m3 <- lm(Booking_Intention ~ Perceived_Credibility + Perceived_Risk + Perceived_Credibility:Perceived_Risk)
+m4 <- lm(Booking_Intention ~ Perceived_Credibility + Perceived_Risk + Perceived_Value + Income)
+m5 <- lm(Booking_Intention ~ Perceived_Credibility + Perceived_Risk + Perceived_Credibility:Perceived_Risk + I(Perceived_Credibility^2))
+```
+```{r}
+library(sjPlot)
+tab_model(m1,m2,m3,m4,m5, show.ci = FALSE)
+```
+
+## . Regression Model Results
+
+The regression results show that Perceived_Credibility is the most consistent and statistically significant predictor of Booking_Intention across all models (p < 0.001). This indicates that higher credibility ratings strongly increase customers’ intention to book with the airline. The squared term confirms a modest non-linear effect, suggesting that credibility becomes even more influential at higher levels.
+
+In contrast, Perceived_Risk and Perceived_Value are not significant predictors once credibility is accounted for. Income is significant in the preferred model, indicating that higher-income customers report stronger booking intentions. Model 4 achieves the highest adjusted R², making it the best-fitting and most parsimonious specification.
+
+# . Advice and Recommendation
+Based on the regression results, the client should primarily focus on Perceived_Credibility, as this variable is consistently significant across multiple model specifications (p < 0.001) and remains a strong predictor of Booking_Intention even in the most parsimonious and best-fitting model (Model 4, adjusted R² ≈ 0.332). This means that increasing customers’ perceptions of the airline’s credibility is likely to produce meaningful improvements in their intention to book future flights. The squared effect of credibility observed in other models further suggests a non-linear relationship, where improvements in credibility among already trusting customers may generate disproportionately higher booking intentions.
+
+Additionally, Income is significant in Model 4 (p < 0.001), indicating that higher-income customers show stronger booking intentions. While this variable cannot be directly influenced by marketing activity, it highlights an opportunity to target higher-income customer segments through tailored promotions or premium service offerings.
+
+In contrast, variables such as Perceived_Risk and Perceived_Value are not statistically significant (p > 0.05), meaning they do not reliably predict booking intention once credibility and demographics are taken into account. Therefore, the client should not prioritise these attributes in their immediate campaign strategy.
+
+From a managerial perspective, the airline should design a marketing campaign that reinforces brand credibility through trust-building messaging—for example, emphasising safety records, reliability, transparency, and strong service performance. Testimonials, third-party certifications, and consistent communication around operational excellence can also strengthen perceived credibility. By focusing on this key driver and by targeting high-income customer segments, the airline can more effectively steer its campaign to increase booking intentions.
